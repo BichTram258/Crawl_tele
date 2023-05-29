@@ -30,7 +30,7 @@ args = parser.parse_args()
 api_id = args.api_id or '25191559' #'YOUR_API_ID'
 api_hash = args.api_hash or '69c8545670bab0234280eb8dcabeee15' #'YOUR_API_HASH'
 phone = args.phone or '+84373597908'#'YOUR_PHONE_NUMBER'
-group_name = args.group_name or "coininsightsama"
+group_name = args.group_name or "mcan_coin"
 action = args.action or 'scrape_members_admins_messages'
 options = args.options or '{"offset_date": 16, "limit": 2000}' #'{"offset_date": 0, "limit": 3}'
 
@@ -148,26 +148,49 @@ async def main():
             members = unique_members
         else:
             members = await client.get_participants(group, aggressive=True)
-        batch_size = 100
-        for i in range(0, len(members), batch_size):
-            batch_members = members[i:i+batch_size]
-            await process_and_print_members(batch_members)
+
+        members_json = [m.to_dict() for m in members]
+        members_json = convert_bytes_or_datetime_to_strings(members_json)
+        json_str = json.dumps(members_json, ensure_ascii=False)
+        print(json_str)
+
+        file_name = f"{action}-{group_name}.json"
+
+        if not os.path.exists("data"):
+            os.makedirs("data")
+        with open(os.path.join("data", file_name), "w") as f:
+            json.dump(json.loads(json_str), f)
 
     elif action == 'scrape_admins':
         admins = await client.get_participants(group, aggressive=True, filter=ChannelParticipantsAdmins)
-        batch_size = 100
-        for i in range(0, len(admins), batch_size):
-            batch_admins = admins[i:i+batch_size]
-            await process_and_print_admins(batch_admins)
+        admins_json = [a.to_dict() for a in admins]
+        admins_json = convert_bytes_or_datetime_to_strings(admins_json)
+        json_str = json.dumps(admins_json, ensure_ascii=False)
+        print(json_str)
+
+        file_name = f"{action}-{group_name}-{options}.json"
+
+        if not os.path.exists("data"):
+            os.makedirs("data")
+        with open(os.path.join("data", file_name), "w") as f:
+            json.dump(json.loads(json_str), f)
 
     elif action == 'scrape_messages':
         messages = await get_messages()
-        await process_and_print_messages(messages, action, group_name, options)
+        messages_json = [m.to_dict() for m in messages]
+        messages_json = convert_bytes_or_datetime_to_strings(messages_json)
+        json_str = json.dumps(messages_json, ensure_ascii=False)
+        print(json_str)
+
+        file_name = f"{action}-{group_name}-{options}.json"
+
+        if not os.path.exists("data"):
+            os.makedirs("data")
+
+        with open(os.path.join("data", file_name), "w") as f:
+            json.dump(json.loads(json_str), f)
 
     elif action == 'scrape_members_admins_messages':
-        client_db = pymongo.MongoClient("mongodb+srv://sontng:So0373597908@cluster0.ms4zoal.mongodb.net/test")
-        db = client_db["test"]
-        collection = db["crawlers"]
         members_count = (await client.get_participants(group, limit=0)).total
         admins = await client.get_participants(group, aggressive=True, filter=ChannelParticipantsAdmins)
         messages = await get_messages()
@@ -182,6 +205,7 @@ async def main():
         else:
             members = await client.get_participants(group, aggressive=True)
         batch_size = 500
+        file_name = f"{action}-{group_name}-{options}.json"
 
         while members or admins or messages:
             if members:
@@ -189,72 +213,33 @@ async def main():
                 process_members = await process_and_print_members(batch_members)
                 members = members[batch_size:]
 
+                if not os.path.exists("data_members"):
+                    os.makedirs("data_members")
+
+                with open(os.path.join("data_members", file_name), "w") as f:
+                    json.dump(json.loads(process_members), f)
+
             if admins:
                 batch_admins = admins[:batch_size]
                 process_admins = await process_and_print_admins(batch_admins)
                 admins = admins[batch_size:]
+
+                if not os.path.exists("data_admins"):
+                    os.makedirs("data_admins")
+
+                with open(os.path.join("data_admins", file_name), "w") as f:
+                    json.dump(json.loads(process_admins), f)
 
             if messages:
                 batch_messages = messages[:batch_size]
                 process_messages = await process_and_print_messages(batch_messages)
                 messages = messages[batch_size:]
 
-            query_update = {"group_name": group_name}
-            record_update = collection.find_one(query_update)
-            data = {
-                'group_name': group_name, 
-                'action': action, 
-                'status': "1", 
-                'data_members': 
-                    [
-                        json.loads(process_members)
-                    ]
-                if process_members else {'result': []}, 
-                'data_admins':
-                    [
-                        json.loads(process_admins)
-                    ]
-                if process_admins else {'result': []}, 
-                'data_messages': 
-                    [
-                        json.loads(process_messages)
-                    ]
-                if process_messages else {'result': []},
-                
-                'date_start': datetime.now()
-            }
-            data_json = json.loads(json.dumps(data, default=datetime_serializer))
-            if not record_update:
-                collection.insert_one(data_json)
-            else:
-                if process_members:
-                    collection.update_one(
-                        {'group_name': group_name},
-                        {'$push': {
-                            'data_members': {
-                                '$each': [json.loads(process_members)]
-                            }
-                        }}
-                    )
-                elif process_admins:
-                    collection.update_one(
-                        {'group_name': group_name},
-                        {'$push': {
-                            'data_admins': {
-                                '$each': [json.loads(process_admins)]
-                            }
-                        }}
-                    )
-                elif process_messages:
-                    collection.update_one(
-                        {'group_name': group_name},
-                        {'$push': {
-                            'data_messages': {
-                                '$each': [json.loads(process_messages)]
-                            }
-                        }}
-                    )
-        collection.update_one({'group_name': group_name}, {"$set": {'status': "2", 'date_end': datetime.now()}})   
+                if not os.path.exists("data_messages"):
+                    os.makedirs("data_messages")
+
+                with open(os.path.join("data_messages", file_name), "w") as f:
+                    json.dump(json.loads(process_messages), f)  
             
     elif action == 'scrape_all_members':
         members = await get_all_members()

@@ -21,6 +21,7 @@ def groupname():
     while True:
         query = {"$and": [
             {"_id": {"$exists": True}},
+            {"telegram.status": "0"},
             {"telegram.data.status": "0"}
         ]}
         record = collection.find_one(query)
@@ -272,6 +273,7 @@ async def main():
                                         }
                                     }}
                             )
+                        collection.update_one({"_id": record["_id"]}, {"$set": {'telegram.status': "1", 'telegram.data.status': "1"}}) 
                 collection.update_one({"_id": record["_id"]}, {"$set": {'telegram.status': "2", 'telegram.data.status': "2"}})   
                 time.sleep(random.randint(1, 3))  
                 continue
@@ -293,6 +295,10 @@ async def main():
         except ValueError:
             collection.update_one({"_id": record["_id"]}, {"$set": {'telegram.status': "4", 'telegram.data.status': "4"}}) 
             continue
+        except errors.ChatAdminRequiredError:
+            collection.update_one({"_id": record["_id"]}, {"$set": {'telegram.status': "4", 'telegram.data.status': "4", "telegram.overview.percent": 0}}) 
+            continue
+
 with client:
     if client.is_user_authorized():
         client.loop.run_until_complete(main())

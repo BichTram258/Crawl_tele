@@ -6,6 +6,7 @@ from telethon.tl.functions.messages import GetHistoryRequest
 from telethon.tl.types import ChannelParticipantsAdmins
 from telethon.tl.functions.channels import GetParticipantsRequest
 from telethon.tl.types import ChannelParticipantsSearch
+from telethon.errors import UsernameInvalidError
 from telethon import errors
 import random
 import base64
@@ -17,18 +18,18 @@ import pymongo
 def groupname():
     client_db = pymongo.MongoClient("mongodb+srv://bitscope:7EUw7YgsvBKCw7Qc@bitscopedb.oeifxkf.mongodb.net/?retryWrites=true&w=majority")
     db = client_db["test"]
-    collection = db["bitauthens"]
+    collection = db["telegrams"]
     while True:
         query = {"$and": [
             {"_id": {"$exists": True}},
-            {"telegram.status": "0"},
-            {"telegram.data.status": "0"}
+            {"status": "0"},
+            {"data.status": "0"}
         ]}
         record = collection.find_one(query)
         if not record:
                 time.sleep(2)
                 continue
-        group_name = record["telegram"]["profile"]["name"]
+        group_name = record["profile"]["name"]
         if not group_name:
                 time.sleep(2)
                 continue
@@ -136,19 +137,19 @@ async def get_all_members(group_name):
 
 async def main():
     while True:
-        client_db = pymongo.MongoClient("mongodb+srv://bitscope:7EUw7YgsvBKCw7Qc@bitscopedb.oeifxkf.mongodb.net/?retryWrites=true&w=majority")
+        client_db = pymongo.MongoClient("mongodb+srv://sontng:So0373597908@cluster0.ms4zoal.mongodb.net/test")
         db = client_db["test"]
-        collection = db["bitauthens"]
+        collection = db["telegrams"]
         query = {"$and": [
             {"_id": {"$exists": True}},
-            {"telegram.status": "0"},
-            {"telegram.data.status": "0"}
+            {"status": "0"},
+            {"data.status": "0"}
         ]}
         record = collection.find_one(query)
         if not record:
             time.sleep(3)
             continue
-        group_name = record["telegram"]["profile"]["name"]
+        group_name = record["profile"]["name"]
         if not group_name:
             time.sleep(3)
             continue
@@ -194,9 +195,17 @@ async def main():
                 with open(os.path.join("data", file_group_name), "w") as f:
                     json.dump(json.loads(json_str), f)
             elif action == 'scrape_members_admins_messages':
+                # if group.photo:
+                #     photo = group.photo
+                #     # dc_id = photo.dc_id
+                #     result = await client.download_profile_photo(photo)
+
+                #     # avatar_url = f"https://cdn{dc_id}.telegram-cdn.org/file/{access_hash}/{file_reference}.jpg"
+                #     collection.update_one({"_id": record["_id"]}, 
+                #                     {"$set": {"overview.avatar": result}})
                 members_count = (await client.get_participants(group, limit=0)).total
                 collection.update_one({"_id": record["_id"]}, 
-                                      {"$set": {"telegram.data.totalMembers": members_count}})
+                                      {"$set": {"data.totalMembers": members_count}})
                 admins = await client.get_participants(group, aggressive=True, filter=ChannelParticipantsAdmins)
                 if members_count > 10000:
                     normal_search_members = await client.get_participants(group, aggressive=True)
@@ -242,7 +251,7 @@ async def main():
                                 collection.update_one(
                                     {"_id": record["_id"]},
                                     {'$push': {
-                                        'telegram.data.dataMembers': {
+                                        'data.dataMembers': {
                                             '$each': json.loads(process_members)
                                         }
                                     }}
@@ -255,7 +264,7 @@ async def main():
                                 collection.update_one(
                                     {"_id": record["_id"]},
                                     {'$push': {
-                                        'telegram.data.dataAdmins': {
+                                        'data.dataAdmins': {
                                             '$each': json.loads(process_admins)
                                         }
                                     }}
@@ -268,13 +277,13 @@ async def main():
                                 collection.update_one(
                                     {"_id": record["_id"]},
                                     {'$push': {
-                                        'telegram.data.dataMessages': {
+                                        'data.dataMessages': {
                                             '$each': json.loads(process_messages)
                                         }
                                     }}
                             )
-                        collection.update_one({"_id": record["_id"]}, {"$set": {'telegram.status': "1", 'telegram.data.status': "1"}}) 
-                collection.update_one({"_id": record["_id"]}, {"$set": {'telegram.status': "2", 'telegram.data.status': "2"}})   
+                        collection.update_one({"_id": record["_id"]}, {"$set": {'status': "1", 'data.status': "1"}}) 
+                collection.update_one({"_id": record["_id"]}, {"$set": {'status': "2", 'data.status': "2"}})   
                 time.sleep(random.randint(1, 3))  
                 continue
             elif action == 'scrape_all_members':
@@ -293,10 +302,13 @@ async def main():
             else:
                 raise ValueError(f'Invalid action: {action}. Only "scrape_members" , "scrape_messages" and "scrape_members_count" are supported.')
         except ValueError:
-            collection.update_one({"_id": record["_id"]}, {"$set": {'telegram.status': "4", 'telegram.data.status': "4"}}) 
+            collection.update_one({"_id": record["_id"]}, {"$set": {'status': "4", 'data.status': "4"}}) 
+            continue
+        except UsernameInvalidError:
+            collection.update_one({"_id": record["_id"]}, {"$set": {'status': "4", 'data.status': "4"}}) 
             continue
         except errors.ChatAdminRequiredError:
-            collection.update_one({"_id": record["_id"]}, {"$set": {'telegram.status': "4", 'telegram.data.status': "4", "telegram.overview.percent": 0}}) 
+            collection.update_one({"_id": record["_id"]}, {"$set": {'status': "4", 'data.status': "4", "overview.percent": 0}}) 
             continue
 
 with client:
